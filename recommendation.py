@@ -1,4 +1,5 @@
 import requests
+import argparse
 from collections import defaultdict
 
 
@@ -45,7 +46,7 @@ def fetch_user_completed_list_recs(username):
     return response.json()
 
 
-def aggregate_recommendations(completed_anime_recs, rec_type, min_user_score):
+def aggregate_recommendations(completed_anime_recs, metric_type, min_user_score):
     entries = completed_anime_recs['data']['MediaListCollection']['lists'][0]['entries']
     my_watched_anime = [(entry['media']['id'], entry['media']['title']['romaji']) for entry in entries]
     my_watched_anime_keys = set(id for (id, _) in my_watched_anime)
@@ -62,9 +63,9 @@ def aggregate_recommendations(completed_anime_recs, rec_type, min_user_score):
             if media is None:
                 continue
             if media['id'] not in my_watched_anime_keys:
-                if rec_type == "recommendations_by_mode":
+                if metric_type == "mode":
                     rec_vals[media['title']['romaji']] += 1
-                elif rec_type == "recommendations_by_weighted_mode":
+                elif metric_type == "weighted_mode":
                     rec_vals[media['title']['romaji']] += entry_weight
                 else:
                     rec_vals[media['title']['romaji']] += entry_weight * rating
@@ -74,15 +75,36 @@ def aggregate_recommendations(completed_anime_recs, rec_type, min_user_score):
     return recommendations
 
 
-def recommendations(username, rec_type="", min_user_score=0):
+def recommendations(username, metric_type="", min_user_score=0):
     list_data = fetch_user_completed_list_recs(username)
-    recommendations = aggregate_recommendations(list_data, rec_type, min_user_score)
+    recommendations = aggregate_recommendations(list_data, metric_type, min_user_score)
     for name, val in recommendations:
         print(f"{val}\t{name}", sep="\t")
 
 
 def main():
-    recommendations("SimpleCore")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-u", "--username", required=True, help="Username for which to aggregate recommendations")
+    parser.add_argument(
+        "-t", "--type",
+        choices=["mode", "weighted_mode", "weighted_ratings"],
+        default="weighted_ratings",
+        help="Type of metric used to rank recommendations (default: %(default)s)."
+             " mode - the frequency a recommendations appears."
+             " weighted_mode - same as mode, but recommendations weight more for anime the user has scored higher."
+             " weighted_ratings - same as weighted_mode, but the ratings associated with the recommendation are used"
+                                " instead of frequency."
+             " Generally, weighted_ratings results in the best recommendations."
+    )
+    parser.add_argument(
+        "-m", "--min-score",
+        type=int,
+        choices=range(0, 11),
+        default=0,
+        help="Only aggregate recommendations for anime the user scored at least as high as this number."
+    )
+    args = parser.parse_args()
+    recommendations(args.username, metric_type=args.type, min_user_score=args.min_score)
 
 
 if __name__ == "__main__":
